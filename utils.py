@@ -74,3 +74,8 @@ def get_eigenvectors(adj_matrix, degree_matrix):
 
 def export_mesh(mesh, filename):
     o3d.io.write_triangle_mesh(filename, mesh)
+    
+def log_transform(matrix):
+    log_matrix = np.where(matrix == 0, -np.inf, np.log(matrix))
+    
+    return log_matrix

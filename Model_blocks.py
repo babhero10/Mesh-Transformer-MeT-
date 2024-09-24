@@ -46,8 +46,6 @@ class OutputFeedForward(nn.Module):
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(dim_hidden, dim_out),
-            nn.ReLU(),
-            nn.Dropout(dropout)
         )
         
     def forward(self, features):
@@ -231,4 +229,4 @@ class MeshTransformer(nn.Module):
         
         S_out = self.ff_s_out(E_features)
         
-        return S_out, None
+        return S_out, (E_features, P_features)

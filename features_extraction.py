@@ -74,13 +74,13 @@ def compute_face_features(mesh, E=20):
     
     return feature_matrix
 
-def augment_features(T_features, faces_area, translation_range=0.1, rotation_range=30, scale_range=(0.8, 1.2)):
+def augment_features(T_features, faces_area, translation_range=0.1, rotation_range=180, scale_range=(0.8, 1.2)):
     """
     Augment face features with random translation, rotation, and scaling, followed by normalization.
 
     Args:
-    - T_features (torch.Tensor): Tensor of face features (num_faces, feature_dim).
-    - faces_area (torch.Tensor): Tensor containing the areas of the faces (num_faces).
+    - T_features (torch.Tensor): Tensor of face features (batch, num_faces, feature_dim).
+    - faces_area (torch.Tensor): Tensor containing the areas of the faces (batch, num_faces).
     - translation_range (float): Max translation value for positional components.
     - rotation_range (float): Max rotation in degrees.
     - scale_range (tuple): Min and max scaling factors.
@@ -90,52 +90,59 @@ def augment_features(T_features, faces_area, translation_range=0.1, rotation_ran
     - augmented_faces_area (torch.Tensor): Augmented and scaled face areas.
     """
     
-    num_faces = T_features.shape[0]
+    batch_size = T_features.shape[0]
+    num_faces = T_features.shape[1]
+    device = T_features.device  # Get the device of T_features
     
     # Extract vertex coordinates (first 9 columns of T_features)
-    vertex_coords = T_features[:, :9].reshape(num_faces, 3, 3)  # Shape: (num_faces, 3, 3)
+    vertex_coords = T_features[:, :, :9].reshape(batch_size, num_faces, 3, 3)  # Shape: (batch, num_faces, 3, 3)
     
     # Extract normal vectors (columns 9:12)
-    normals = T_features[:, 9:12]
+    normals = T_features[:, :, 9:12]
 
-    # 1. Apply random translation
-    translation = (torch.rand(3) - 0.5) * 2 * translation_range  # Random translation vector
-    vertex_coords += translation  # Translate vertex coordinates
-
-    # 2. Apply random rotation
-    angle = random.uniform(-rotation_range, rotation_range) * torch.pi / 180  # Convert to radians
-    cos, sin = torch.cos(angle), torch.sin(angle)
-    
-    # Random 3D rotation matrix around z-axis (can be extended to arbitrary axes)
-    rotation_matrix = torch.tensor([
-        [cos, -sin, 0],
-        [sin, cos, 0],
-        [0, 0, 1]
-    ])
-
-    # Rotate vertex coordinates and normals
-    vertex_coords = torch.matmul(vertex_coords, rotation_matrix)
-    normals = torch.matmul(normals, rotation_matrix)
-
-    # 3. Apply random scaling
-    scale_factor = random.uniform(*scale_range)
-    vertex_coords *= scale_factor  # Scale vertex coordinates
-    faces_area *= scale_factor ** 2  # Scaling affects areas quadratically
-
-    # Normalize vertex coordinates to [-1, 1]
-    min_vals, _ = vertex_coords.min(dim=0, keepdim=True)
-    max_vals, _ = vertex_coords.max(dim=0, keepdim=True)
-    vertex_coords = 2 * (vertex_coords - min_vals) / (max_vals - min_vals + 1e-7) - 1  # Min-max normalization
-
-    # Normalize normals (if needed, though normals are unit vectors, normalization may not be necessary)
-    normals = normals / (normals.norm(dim=-1, keepdim=True) + 1e-7)  # Normalize normals to unit vectors
-
-    # Update the augmented features
+    # Prepare containers for augmented features and areas
     augmented_features = T_features.clone()
-    augmented_features[:, :9] = vertex_coords.reshape(num_faces, -1)  # Update vertex positions
-    augmented_features[:, 9:12] = normals  # Update normals
+    augmented_faces_area = faces_area.clone()
 
-    return augmented_features, faces_area
+    for i in range(batch_size):
+        # 1. Apply random translation
+        translation = (torch.rand(3, device=device) - 0.5) * 2 * translation_range  # Random translation vector
+        vertex_coords[i] += translation.unsqueeze(0)  # Translate vertex coordinates
+
+        # 2. Apply random rotation
+        angle = random.uniform(-rotation_range, rotation_range) * torch.pi / 180  # Convert to radians
+        angle_tensor = torch.tensor(angle, device=device)  # Convert to tensor on the correct device
+        cos, sin = torch.cos(angle_tensor), torch.sin(angle_tensor)
+        
+        # Random 3D rotation matrix around z-axis
+        rotation_matrix = torch.tensor([
+            [cos, -sin, 0],
+            [sin, cos, 0],
+            [0, 0, 1]
+        ], device=device)
+
+        # Rotate vertex coordinates and normals
+        vertex_coords[i] = torch.matmul(vertex_coords[i], rotation_matrix)
+        normals[i] = torch.matmul(normals[i], rotation_matrix)
+
+        # 3. Apply random scaling
+        scale_factor = random.uniform(*scale_range)
+        vertex_coords[i] *= scale_factor  # Scale vertex coordinates
+        augmented_faces_area[i] *= scale_factor ** 2  # Scaling affects areas quadratically
+
+        # Normalize vertex coordinates to [-1, 1]
+        min_vals = vertex_coords[i].min(dim=1, keepdim=True)[0]
+        max_vals = vertex_coords[i].max(dim=1, keepdim=True)[0]
+        vertex_coords[i] = 2 * (vertex_coords[i] - min_vals) / (max_vals - min_vals + 1e-7) - 1  # Min-max normalization
+
+        # Normalize normals
+        normals[i] = normals[i] / (normals[i].norm(dim=-1, keepdim=True) + 1e-7)  # Normalize normals to unit vectors
+
+        # Update the augmented features for this batch entry
+        augmented_features[i, :, :9] = vertex_coords[i].reshape(num_faces, -1)  # Update vertex positions
+        augmented_features[i, :, 9:12] = normals[i]  # Update normals
+
+    return augmented_features, augmented_faces_area
 
 if __name__ == "__main__":
     mesh = load_mesh("dataset/raw_meshes/7.off")

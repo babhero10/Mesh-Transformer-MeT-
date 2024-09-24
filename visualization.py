@@ -4,6 +4,7 @@ import pyvista as pv
 import random
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+import trimesh
 
 def get_colormap(value, colormap='hsv'):
     """
@@ -27,19 +28,31 @@ def visualize_mesh_open3d(mesh):
          
     o3d.visualization.draw_geometries([mesh])
 
-def visualize_mesh_pyvista(mesh, face_colors=None):
+def visualize_mesh_pyvista(mesh, face_colors=None, save=None):
     # Convert Open3D mesh to NumPy arrays
     vertices = np.asarray(mesh.vertices)
     triangles = np.asarray(mesh.triangles)
 
-    # Convert Open3D mesh to PyVista format
+    # Create a Trimesh object
+    tm_mesh = trimesh.Trimesh(vertices=vertices, faces=triangles)
+
+    # Add face colors if provided
+    if face_colors is not None:
+        tm_mesh.visual.face_colors = np.array(face_colors)
+
+    # Save the mesh with face colors
+    if save is not None:
+        tm_mesh.export(save + '.ply')
+        return
+
+    # Convert Trimesh to PyVista
     pv_mesh = pv.PolyData(vertices, np.hstack([np.full((len(triangles), 1), 3), triangles]))
 
-    # Add colors to the PyVista mesh
     if face_colors is not None:
-        pv_mesh['colors'] = face_colors
+        # Assign the face colors for visualization
+        pv_mesh.cell_data['colors'] = np.array(face_colors)
 
-    # Visualize the mesh interactively with PyVista
+    # Visualize the mesh using PyVista
     p = pv.Plotter()
     
     if face_colors is not None:
@@ -77,3 +90,29 @@ def visualize_positional_encoding(mesh, pos_encoding):
     face_colors = np.array([get_colormap(v) for v in avg_pos_encoding])
 
     visualize_mesh_pyvista(mesh, face_colors)
+    
+def visualize_colored_mesh(mesh, labels, save):
+        """
+        Visualizes the mesh with colors according to the labels.
+
+        Args:
+            mesh_file (str): Path to the .off mesh file.
+            label_file (str): Path to the label file.
+        """
+        # Ensure the labels match the number of faces
+        if labels.shape[0] != len(mesh.triangles):
+            raise ValueError("The number of labels does not match the number of faces in the mesh.")
+
+        # Assign a color to each unique label
+        unique_labels = np.unique(labels)
+        color_map = plt.get_cmap('jet', len(unique_labels))  # Choose a color map
+        
+        # Generate colors for each label
+        color_dict = {label: color_map(i)[:3] for i, label in enumerate(unique_labels)}  # Ignore alpha channel
+        face_colors = np.array([color_dict[label] for label in labels])
+
+        # Convert face colors to the required format for PyVista
+        face_colors_rgb = (face_colors * 255).astype(np.uint8)  # Scale to [0, 255] for RGB
+
+        # Visualize the mesh using PyVista
+        visualize_mesh_pyvista(mesh, face_colors_rgb, save)

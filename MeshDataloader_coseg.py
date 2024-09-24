@@ -179,7 +179,7 @@ class MeshDataset(Dataset):
             
             # Define expected shapes
             expected_shapes = {
-                'T_features': (self.target_faces, 27),
+                'T_features': (self.target_faces, self.num_of_eigenvectors + 13),
                 'J_features': (self.target_faces, self.target_max_vertices // self.lambda_val),
                 'A_matrix': (self.target_faces, self.target_faces),
                 'C_matrix': (self.target_faces, self.target_faces),
@@ -207,7 +207,7 @@ class MeshDataset(Dataset):
             faces_area = torch.tensor(faces_area, dtype=torch.float32)
             
             # Save the features and labels
-            torch.save((T_features, J_features, A_matrix, C_matrix, faces_area, y), os.path.join(self.processed_dir, f'data_{idx}.pt'))
+            torch.save((T_features, J_features, A_matrix, C_matrix, faces_area, y, mesh_path), os.path.join(self.processed_dir, f'data_{idx}.pt'))
             idx += 1
 
     def read_seg_file(self, seg_file):
